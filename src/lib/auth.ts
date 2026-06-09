@@ -2,15 +2,11 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
 import bcrypt from "bcryptjs"
-import crypto from "crypto"
 import { prisma } from "./prisma"
-import { sendVerificationEmail } from "./mail"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
+  pages: { signIn: "/login" },
   providers: [
     Credentials({
       name: "credentials",
@@ -28,10 +24,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
     ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
-      ? [Google({
-          clientId: process.env.AUTH_GOOGLE_ID,
-          clientSecret: process.env.AUTH_GOOGLE_SECRET,
-        })]
+      ? [Google({ clientId: process.env.AUTH_GOOGLE_ID, clientSecret: process.env.AUTH_GOOGLE_SECRET })]
       : []),
   ],
   callbacks: {
@@ -39,46 +32,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "google") {
         const existing = await prisma.user.findUnique({ where: { email: user.email! } })
         if (!existing) {
-          const newUser = await prisma.user.create({
-            data: {
-              email: user.email!,
-              name: user.name || user.email?.split("@")[0],
-              image: user.image,
-            },
+          await prisma.user.create({
+            data: { email: user.email!, name: user.name || user.email?.split("@")[0], image: user.image, emailVerified: new Date() },
           })
-          const token = crypto.randomBytes(32).toString("hex")
-          const expires = new Date(Date.now() + 24 * 60 * 60 * 1000)
-          await prisma.verificationEmail.create({
-            data: { userId: newUser.id, token, expires },
-          })
-          await sendVerificationEmail(user.email!, token, user.name || "User")
-          return "/verify?sent=true"
-        }
-        if (!existing.emailVerified) {
-          return "/verify?sent=true"
         }
       }
       return true
     },
     async jwt({ token, user, trigger }) {
       if (user) {
-        const dbUser = await prisma.user.findUnique({ where: { email: user.email! } })
-        if (dbUser) {
-          token.id = dbUser.id
-          token.role = dbUser.role || "user"
-        }
+        const dbUser = await prisma.user.findUnique({ where: { email: user.email! }, select: { id: true, role: true } })
+        if (dbUser) { token.id = dbUser.id; token.role = dbUser.role || "user" }
       }
       if (trigger === "update") {
-        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string } })
+        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { role: true } })
         if (dbUser) token.role = dbUser.role
       }
       return token
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        ;(session.user as any).role = token.role as string
-      }
+      if (session.user) { session.user.id = token.id as string; (session.user as any).role = token.role as string }
       return session
     },
   },
