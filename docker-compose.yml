@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: always
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-Password123!}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+  app:
+    build: .
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: sqlserver://db:1433;database=calo_gym;user=sa;password=${SA_PASSWORD:-Password123!};trustServerCertificate=true
+      AUTH_SECRET: ${AUTH_SECRET:-my-super-secret-change-me}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+    depends_on:
+      - db
+
+volumes:
+  sqlserver_data:
