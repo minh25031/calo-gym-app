@@ -1,3 +1,4 @@
+import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET() {
@@ -9,6 +10,8 @@ export async function GET() {
     hasDATABASE: !!process.env.DATABASE_URL,
     authURL: process.env.AUTH_URL?.slice(0, 50),
     hasGoogleID: !!process.env.AUTH_GOOGLE_ID,
+    hasGoogleSecret: !!process.env.AUTH_GOOGLE_SECRET,
+    googleID: process.env.AUTH_GOOGLE_ID?.slice(0, 30),
   }
 
   // Test database connection
@@ -18,6 +21,14 @@ export async function GET() {
     results.db = { ok: true, ms: Date.now() - start, user: user?.email }
   } catch (e: any) {
     results.db = { ok: false, error: e.message, code: e.code }
+  }
+
+  // Test auth session
+  try {
+    const session = await auth()
+    results.auth = { ok: true, hasSession: !!session?.user }
+  } catch (e: any) {
+    results.auth = { ok: false, error: e.message }
   }
 
   return Response.json(results)
